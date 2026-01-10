@@ -4,3 +4,4 @@ generate_uml:
 	plantuml diagrams/component/*.puml
 	plantuml diagrams/code/*.puml
 	plantuml diagrams/sequence/*.puml
+	plantuml diagrams/erd/*.puml
