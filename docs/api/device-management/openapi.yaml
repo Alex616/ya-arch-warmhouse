@@ -1,0 +1,563 @@
+openapi: 3.0.3
+info:
+  title: Device Management API
+  description: |
+    API для управления устройствами системы "умный дом" WarmHouse.
+
+    Сервис предоставляет функциональность для:
+    - Регистрации и управления устройствами
+    - Работы с моделями и типами устройств
+    - Отправки команд управления устройствами
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Локальный сервер разработки
+
+tags:
+  - name: devices
+    description: Операции с устройствами
+  - name: device-models
+    description: Модели устройств
+  - name: device-types
+    description: Типы устройств
+  - name: commands
+    description: Команды управления устройствами
+
+paths:
+  /devices:
+    get:
+      summary: Получить список устройств
+      description: Возвращает список всех устройств пользователя
+      tags:
+        - devices
+      parameters:
+        - name: userId
+          in: query
+          description: ID пользователя (фильтр)
+          schema:
+            type: string
+            format: uuid
+        - name: typeId
+          in: query
+          description: ID типа устройства (фильтр)
+          schema:
+            type: integer
+        - name: statusId
+          in: query
+          description: ID статуса устройства (фильтр)
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Количество элементов на странице
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          description: Смещение для пагинации
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Список устройств успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Device"
+                  total:
+                    type: integer
+                    description: Общее количество устройств
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      summary: Зарегистрировать новое устройство
+      description: Создает новое устройство в системе
+      tags:
+        - devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceCreate"
+      responses:
+        "201":
+          description: Устройство успешно создано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /devices/{deviceId}:
+    get:
+      summary: Получить информацию об устройстве
+      description: Возвращает детальную информацию об устройстве по его ID
+      tags:
+        - devices
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Информация об устройстве
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    put:
+      summary: Обновить информацию об устройстве
+      description: Обновляет данные устройства
+      tags:
+        - devices
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceUpdate"
+      responses:
+        "200":
+          description: Устройство успешно обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    delete:
+      summary: Удалить устройство
+      description: Удаляет устройство из системы
+      tags:
+        - devices
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "204":
+          description: Устройство успешно удалено
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /devices/{deviceId}/commands:
+    post:
+      summary: Отправить команду устройству
+      description: Создает и отправляет команду управления устройству
+      tags:
+        - commands
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandExecute"
+      responses:
+        "202":
+          description: Команда принята к исполнению
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /device-models:
+    get:
+      summary: Получить список моделей устройств
+      description: Возвращает список доступных моделей устройств
+      tags:
+        - device-models
+      parameters:
+        - name: typeId
+          in: query
+          description: Фильтр по типу устройства
+          schema:
+            type: integer
+        - name: manufacturer
+          in: query
+          description: Фильтр по производителю
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Список моделей устройств
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeviceModel"
+
+  /device-models/{modelId}:
+    get:
+      summary: Получить информацию о модели устройства
+      description: Возвращает детальную информацию о модели устройства
+      tags:
+        - device-models
+      parameters:
+        - name: modelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Информация о модели
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceModel"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /device-models/{modelId}/commands:
+    get:
+      summary: Получить поддерживаемые команды для модели
+      description: Возвращает список команд, поддерживаемых моделью устройства
+      tags:
+        - device-models
+        - commands
+      parameters:
+        - name: modelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Список команд
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Command"
+
+  /device-types:
+    get:
+      summary: Получить список типов устройств
+      description: Возвращает все доступные типы устройств
+      tags:
+        - device-types
+      responses:
+        "200":
+          description: Список типов устройств
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeviceType"
+
+components:
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      description: Уникальный идентификатор устройства
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Device:
+      type: object
+      description: Устройство в системе умного дома
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор устройства
+        name:
+          type: string
+          description: Название устройства
+          example: "Датчик температуры в гостиной"
+        modelId:
+          type: integer
+          description: ID модели устройства
+        model:
+          $ref: "#/components/schemas/DeviceModel"
+        statusId:
+          type: integer
+          description: ID статуса устройства
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        address:
+          type: string
+          description: Сетевой адрес устройства
+          example: "192.168.1.10"
+        userId:
+          type: string
+          format: uuid
+          description: ID владельца устройства
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeviceCreate:
+      type: object
+      required:
+        - name
+        - modelId
+        - address
+        - userId
+      properties:
+        name:
+          type: string
+          description: Название устройства
+        modelId:
+          type: integer
+          description: ID модели устройства
+        address:
+          type: string
+          description: Сетевой адрес устройства
+        userId:
+          type: string
+          format: uuid
+          description: ID владельца
+
+    DeviceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        statusId:
+          type: integer
+        address:
+          type: string
+
+    DeviceModel:
+      type: object
+      description: Модель устройства
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: "TH-16 Temperature Sensor"
+        manufacturer:
+          type: string
+          example: "Sonoff"
+        type:
+          $ref: "#/components/schemas/DeviceType"
+        specifications:
+          type: object
+          description: Технические характеристики модели
+          additionalProperties: true
+
+    DeviceType:
+      type: object
+      description: Тип устройства
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          enum:
+            - heating
+            - lighting
+            - gate
+            - camera
+            - temperature_sensor
+          example: "heating"
+
+    DeviceStatus:
+      type: object
+      description: Статус устройства
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum:
+            - online
+            - offline
+            - error
+            - maintenance
+          example: "online"
+
+    Command:
+      type: object
+      description: Команда управления устройством
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Название команды
+          example: "Установить температуру"
+        key:
+          type: string
+          description: Ключ команды для API устройства
+          example: "set_temperature"
+        deviceModelId:
+          type: integer
+        parameters:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommandParameter"
+
+    CommandParameter:
+      type: object
+      description: Параметр команды
+      properties:
+        id:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "temperature"
+        type:
+          type: string
+          enum:
+            - string
+            - integer
+            - float
+            - boolean
+          example: "float"
+        defaultValue:
+          type: string
+          example: "22.0"
+        isRequired:
+          type: boolean
+
+    CommandExecute:
+      type: object
+      required:
+        - commandId
+      properties:
+        commandId:
+          type: string
+          format: uuid
+          description: ID команды для выполнения
+        parameters:
+          type: object
+          description: Параметры команды (ключ-значение)
+          additionalProperties: true
+          example:
+            temperature: 22.5
+            mode: "heat"
+
+    CommandRecord:
+      type: object
+      description: Запись о выполнении команды
+      properties:
+        id:
+          type: string
+          format: uuid
+        deviceId:
+          type: string
+          format: uuid
+        command:
+          $ref: "#/components/schemas/Command"
+        status:
+          $ref: "#/components/schemas/CommandStatus"
+        timestamp:
+          type: string
+          format: date-time
+        result:
+          type: object
+          description: Результат выполнения команды
+          additionalProperties: true
+
+    CommandStatus:
+      type: object
+      description: Статус выполнения команды
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum:
+            - pending
+            - in_progress
+            - completed
+            - failed
+            - cancelled
+          example: "completed"
+
+    Error:
+      type: object
+      description: Стандартная ошибка
+      properties:
+        error:
+          type: string
+          description: Сообщение об ошибке
+        code:
+          type: string
+          description: Код ошибки
+        details:
+          type: object
+          description: Дополнительные детали ошибки
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Unauthorized:
+      description: Требуется аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

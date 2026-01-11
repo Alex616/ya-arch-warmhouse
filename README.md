@@ -93,11 +93,25 @@
 
 ### 1. Тип API
 
-Укажите, какой тип API вы будете использовать для взаимодействия микросервисов. Объясните своё решение.
+REST API — для команд от пользователя
+AsyncAPI (events) — для телеметрии и событий от устройств, а также при работе с командами автоматизации
 
 ### 2. Документация API
 
-Здесь приложите ссылки на документацию API для микросервисов, которые вы спроектировали в первой части проектной работы. Для документирования используйте Swagger/OpenAPI или AsyncAPI.
+**Микросервисы:**
+
+1. **Device Management Service** - Управление устройствами
+   - [OpenAPI спецификация (REST API)](docs/api/device-management/openapi.yaml)
+   - [AsyncAPI спецификация (EventBus)](docs/api/device-management/asyncapi.yaml)
+
+2. **Telemetry Management Service** - Управление телеметрией
+   - [OpenAPI спецификация (REST API)](docs/api/telemetry-management/openapi.yaml)
+   - [AsyncAPI спецификация (EventBus)](docs/api/telemetry-management/asyncapi.yaml)
+
+**Как просмотреть:**
+
+- OpenAPI: используйте [Swagger Editor](https://editor.swagger.io/) или локальный Swagger UI
+- AsyncAPI: используйте [AsyncAPI Studio](https://studio.asyncapi.com/)
 
 # Задание 5. Работа с docker и docker-compose
 

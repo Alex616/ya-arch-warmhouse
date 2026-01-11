@@ -1,0 +1,375 @@
+asyncapi: 2.6.0
+info:
+  title: Telemetry Management EventBus API
+  version: 1.0.0
+  description: |
+    Асинхронное API для сбора телеметрии устройств через шину событий (EventBus).
+
+    Сервис Telemetry Management подписывается на события:
+    - События системы для мониторинга
+
+    Сборщик телеметрии (Telemetry Consumer) читает метрики из EventBus
+    и отправляет их в Telemetry API для сохранения в MongoDB.
+
+servers:
+  kafka:
+    url: kafka://kafka:9092
+    protocol: kafka
+
+channels:
+  metrics:
+    description: Универсальный канал для всех типов метрик
+    subscribe:
+      summary: Получение всех метрик устройств
+      description: |
+        Альтернативный подход: один канал для всех типов метрик.
+        Сборщик должен обрабатывать разные схемы данных.
+      operationId: subscribeAllMetrics
+      message:
+        oneOf:
+          - $ref: "#/components/messages/HeatingMetricMessage"
+          - $ref: "#/components/messages/LightingMetricMessage"
+          - $ref: "#/components/messages/GateMetricMessage"
+          - $ref: "#/components/messages/CameraMetricMessage"
+          - $ref: "#/components/messages/TemperatureMetricMessage"
+
+components:
+  messages:
+    HeatingMetricMessage:
+      name: HeatingMetric
+      title: Метрика устройства отопления
+      summary: Телеметрия от устройства отопления
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/HeatingMetricPayload"
+      examples:
+        - name: HeaterTemperature
+          summary: Показания температуры с нагревателя
+          payload:
+            eventType: metric.heating
+            timestamp: "2024-01-10T10:15:30Z"
+            metric:
+              deviceId: "123e4567-e89b-12d3-a456-426614174000"
+              metricTypeId: 1
+              metricTypeName: "temperature"
+              value: 22.5
+              unit: "°C"
+              data:
+                targetTemperature: 23.0
+                mode: "heat"
+                powerConsumption: 1.2
+
+    LightingMetricMessage:
+      name: LightingMetric
+      title: Метрика устройства освещения
+      summary: Телеметрия от устройства освещения
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/LightingMetricPayload"
+      examples:
+        - name: LightBrightness
+          summary: Показания яркости освещения
+          payload:
+            eventType: metric.lighting
+            timestamp: "2024-01-10T10:15:30Z"
+            metric:
+              deviceId: "234e5678-e89b-12d3-a456-426614174001"
+              metricTypeId: 2
+              metricTypeName: "brightness"
+              value: 75
+              unit: "%"
+              data:
+                isOn: true
+                color:
+                  r: 255
+                  g: 255
+                  b: 200
+                powerConsumption: 0.05
+
+    GateMetricMessage:
+      name: GateMetric
+      title: Метрика устройства управления воротами
+      summary: Телеметрия от устройства ворот
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GateMetricPayload"
+      examples:
+        - name: GatePosition
+          summary: Положение ворот
+          payload:
+            eventType: metric.gate
+            timestamp: "2024-01-10T10:15:30Z"
+            metric:
+              deviceId: "345e6789-e89b-12d3-a456-426614174002"
+              metricTypeId: 3
+              metricTypeName: "position"
+              value: "closed"
+              unit: "state"
+              data:
+                openPercentage: 0
+                isLocked: true
+                obstacleDetected: false
+
+    CameraMetricMessage:
+      name: CameraMetric
+      title: Метрика камеры видеонаблюдения
+      summary: Телеметрия от камеры
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CameraMetricPayload"
+      examples:
+        - name: CameraStatus
+          summary: Статус работы камеры
+          payload:
+            eventType: metric.camera
+            timestamp: "2024-01-10T10:15:30Z"
+            metric:
+              deviceId: "456e7890-e89b-12d3-a456-426614174003"
+              metricTypeId: 4
+              metricTypeName: "camera_status"
+              value: "recording"
+              unit: "state"
+              data:
+                resolution: "1920x1080"
+                fps: 30
+                storageUsed: 45.5
+                motionDetected: false
+
+    TemperatureMetricMessage:
+      name: TemperatureMetric
+      title: Метрика датчика температуры
+      summary: Показания температуры с датчика
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/TemperatureMetricPayload"
+      examples:
+        - name: RoomTemperature
+          summary: Температура в комнате
+          payload:
+            eventType: metric.temperature
+            timestamp: "2024-01-10T10:15:30Z"
+            metric:
+              deviceId: "567e8901-e89b-12d3-a456-426614174004"
+              metricTypeId: 1
+              metricTypeName: "temperature"
+              value: 21.3
+              unit: "°C"
+              data:
+                humidity: 45
+                location: "living_room"
+
+  schemas:
+    BaseMetricPayload:
+      type: object
+      description: Базовая структура для всех метрик
+      required:
+        - eventType
+        - timestamp
+        - metric
+      properties:
+        eventType:
+          type: string
+          description: Тип события метрики
+        timestamp:
+          type: string
+          format: date-time
+          description: Время сбора метрики
+        metric:
+          type: object
+          required:
+            - deviceId
+            - metricTypeId
+            - metricTypeName
+            - value
+          properties:
+            deviceId:
+              type: string
+              format: uuid
+              description: ID устройства
+            metricTypeId:
+              type: integer
+              description: ID типа метрики
+            metricTypeName:
+              type: string
+              description: Название типа метрики
+            value:
+              description: Значение метрики (тип зависит от metricType)
+            unit:
+              type: string
+              description: Единица измерения
+            data:
+              type: object
+              description: Дополнительные данные метрики
+              additionalProperties: true
+
+    HeatingMetricPayload:
+      allOf:
+        - $ref: "#/components/schemas/BaseMetricPayload"
+        - type: object
+          properties:
+            eventType:
+              type: string
+              const: metric.heating
+            metric:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: Специфичные данные для отопления
+                  properties:
+                    targetTemperature:
+                      type: number
+                      description: Целевая температура
+                    mode:
+                      type: string
+                      enum:
+                        - heat
+                        - cool
+                        - auto
+                        - off
+                    powerConsumption:
+                      type: number
+                      description: Потребление энергии (кВт)
+                    humidity:
+                      type: number
+                      description: Влажность (%)
+
+    LightingMetricPayload:
+      allOf:
+        - $ref: "#/components/schemas/BaseMetricPayload"
+        - type: object
+          properties:
+            eventType:
+              type: string
+              const: metric.lighting
+            metric:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: Специфичные данные для освещения
+                  properties:
+                    isOn:
+                      type: boolean
+                      description: Включено/выключено
+                    brightness:
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                      description: Яркость (%)
+                    color:
+                      type: object
+                      description: Цвет RGB
+                      properties:
+                        r:
+                          type: integer
+                          minimum: 0
+                          maximum: 255
+                        g:
+                          type: integer
+                          minimum: 0
+                          maximum: 255
+                        b:
+                          type: integer
+                          minimum: 0
+                          maximum: 255
+                    powerConsumption:
+                      type: number
+                      description: Потребление энергии (кВт)
+
+    GateMetricPayload:
+      allOf:
+        - $ref: "#/components/schemas/BaseMetricPayload"
+        - type: object
+          properties:
+            eventType:
+              type: string
+              const: metric.gate
+            metric:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: Специфичные данные для ворот
+                  properties:
+                    openPercentage:
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                      description: Процент открытия
+                    isLocked:
+                      type: boolean
+                      description: Заблокировано/разблокировано
+                    obstacleDetected:
+                      type: boolean
+                      description: Обнаружено препятствие
+                    lastOpenTime:
+                      type: string
+                      format: date-time
+                      description: Время последнего открытия
+
+    CameraMetricPayload:
+      allOf:
+        - $ref: "#/components/schemas/BaseMetricPayload"
+        - type: object
+          properties:
+            eventType:
+              type: string
+              const: metric.camera
+            metric:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: Специфичные данные для камеры
+                  properties:
+                    resolution:
+                      type: string
+                      description: Разрешение видео
+                      example: "1920x1080"
+                    fps:
+                      type: integer
+                      description: Кадров в секунду
+                    storageUsed:
+                      type: number
+                      description: Использовано места (GB)
+                    motionDetected:
+                      type: boolean
+                      description: Обнаружено движение
+                    recordingDuration:
+                      type: integer
+                      description: Продолжительность записи (секунды)
+                    streamUrl:
+                      type: string
+                      format: uri
+                      description: URL видеопотока
+
+    TemperatureMetricPayload:
+      allOf:
+        - $ref: "#/components/schemas/BaseMetricPayload"
+        - type: object
+          properties:
+            eventType:
+              type: string
+              const: metric.temperature
+            metric:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: Специфичные данные для датчика температуры
+                  properties:
+                    humidity:
+                      type: number
+                      description: Влажность (%)
+                    pressure:
+                      type: number
+                      description: Атмосферное давление (мм рт. ст.)
+                    location:
+                      type: string
+                      description: Расположение датчика
+                    batteryLevel:
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                      description: Уровень заряда батареи (%)

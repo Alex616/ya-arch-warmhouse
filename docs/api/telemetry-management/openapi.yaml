@@ -1,0 +1,329 @@
+openapi: 3.0.3
+info:
+  title: Telemetry Management API
+  description: |
+    API для сбора и управления телеметрией устройств системы "умный дом" WarmHouse.
+
+    Сервис предоставляет функциональность для:
+    - Сбора метрик с устройств
+    - Получения метрик по различным фильтрам (устройство, время, тип метрики)
+    - Хранения исторических данных телеметрии
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8082/api/v1
+    description: Локальный сервер разработки
+
+paths:
+  /metrics:
+    get:
+      summary: Получить метрики
+      description: |
+        Возвращает список метрик с возможностью фильтрации по устройству,
+        временному диапазону и типу метрики.
+      tags:
+        - metrics
+      parameters:
+        - name: deviceId
+          in: query
+          description: ID устройства (фильтр)
+          schema:
+            type: string
+            format: uuid
+        - name: metricTypeId
+          in: query
+          description: ID типа метрики (фильтр)
+          schema:
+            type: integer
+        - name: fromTimestamp
+          in: query
+          description: Начальная временная метка
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-01T00:00:00Z"
+        - name: toTimestamp
+          in: query
+          description: Конечная временная метка
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-10T23:59:59Z"
+        - name: limit
+          in: query
+          description: Количество элементов на странице
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+        - name: offset
+          in: query
+          description: Смещение для пагинации
+          schema:
+            type: integer
+            default: 0
+        - name: sortOrder
+          in: query
+          description: Порядок сортировки по времени
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        "200":
+          description: Список метрик успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metrics:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Metric"
+                  total:
+                    type: integer
+                    description: Общее количество метрик
+                  hasMore:
+                    type: boolean
+                    description: Есть ли еще данные
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      summary: Сохранить метрику
+      description: |
+        Сохраняет новую метрику от устройства.
+        Обычно используется сборщиком метрик из EventBus.
+      tags:
+        - metrics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricCreate"
+      responses:
+        "201":
+          description: Метрика успешно сохранена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Metric"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /metrics/{metricId}:
+    get:
+      summary: Получить метрику по ID
+      description: Возвращает детальную информацию о конкретной метрике
+      tags:
+        - metrics
+      parameters:
+        - name: metricId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Информация о метрике
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Metric"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /metrics/devices/{deviceId}/latest:
+    get:
+      summary: Получить последние метрики устройства
+      description: |
+        Возвращает последние метрики для указанного устройства.
+        По умолчанию возвращает последнюю метрику каждого типа.
+      tags:
+        - metrics
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: metricTypeId
+          in: query
+          description: Фильтр по типу метрики (опционально)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Последние метрики устройства
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Metric"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  schemas:
+    Metric:
+      type: object
+      description: Метрика устройства
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор метрики
+        deviceId:
+          type: string
+          format: uuid
+          description: ID устройства
+        metricTypeId:
+          type: integer
+          description: ID типа метрики
+        metricType:
+          $ref: "#/components/schemas/MetricType"
+        timestamp:
+          type: string
+          format: date-time
+          description: Временная метка сбора
+        value:
+          description: Значение метрики (может быть разных типов)
+          oneOf:
+            - type: number
+            - type: string
+            - type: boolean
+          example: 22.5
+        data:
+          type: object
+          description: Дополнительные данные метрики
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Время сохранения в БД
+
+    MetricCreate:
+      type: object
+      required:
+        - deviceId
+        - metricTypeId
+        - timestamp
+        - value
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        metricTypeId:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        value:
+          description: Значение метрики
+        data:
+          type: object
+          description: Дополнительные данные
+          additionalProperties: true
+
+    MetricType:
+      type: object
+      description: Тип метрики
+      properties:
+        id:
+          type: integer
+          description: ID типа метрики
+        name:
+          type: string
+          description: Название типа метрики
+          example: "temperature"
+        unit:
+          type: string
+          description: Единица измерения
+          example: "°C"
+        dataType:
+          type: string
+          enum:
+            - float
+            - integer
+            - string
+            - boolean
+            - json
+          description: Тип данных значения
+          example: "float"
+        description:
+          type: string
+          description: Описание типа метрики
+        validationRules:
+          type: object
+          description: Правила валидации значений
+          properties:
+            min:
+              type: number
+              description: Минимальное значение
+            max:
+              type: number
+              description: Максимальное значение
+            pattern:
+              type: string
+              description: Регулярное выражение для строковых значений
+
+    Error:
+      type: object
+      description: Стандартная ошибка
+      properties:
+        error:
+          type: string
+          description: Сообщение об ошибке
+        code:
+          type: string
+          description: Код ошибки
+        details:
+          type: object
+          description: Дополнительные детали ошибки
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Unauthorized:
+      description: Требуется аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
