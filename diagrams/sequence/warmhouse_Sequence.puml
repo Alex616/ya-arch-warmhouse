@@ -1,0 +1,74 @@
+@startuml
+!include C4_Sequence.puml
+Boundary(b1, "Регистрация нового устройства (отопление)", "")
+  Person(user, "Пользователь")
+  Container(web_app, "Web Application", "React")
+  Container(gateway_api, "Gateway", "API Gateway")
+  Container(event_bus, "Event bus", "Kafka")
+  System_Ext(heat, "Датчик отопления", $sprite="robot")
+
+  Container_Boundary(user_managment, "User Managment Domain")
+    Container(auth_app, "AUTH Application", "Go, KeyCloack")
+    Container(user_service, "User Managment Service", "Go")
+  Boundary_End()
+
+  Container_Boundary(devise_managment, "Device managment Domain")
+    Container(device_service, "Device Managment Service", "Go")
+    ContainerDb(device_db, "Database API", "PostgreSQL")
+  Boundary_End()
+
+  Container_Boundary(telemetry_domain, "Telemetry Domain")
+    Container(heating_service, "Heating service", "Go")
+    ContainerDb(heating_db, "Heating database", "PostgreSQL")
+  Boundary_End()
+
+  note over user, gateway_api
+    Этап 1: Аутентификация и валидация пользователя
+  end note
+  Rel(user, web_app, "Регистрирует новое устройство отопления")
+  Rel(web_app, gateway_api, "Отправляет запрос на добавление устройства (deviceType='heating')")
+  Rel(gateway_api, auth_app, "Проверяет токен пользователя")
+  Rel(auth_app, gateway_api, "Возвращает статус токена")
+  Rel(gateway_api, user_service, "Запрашивает информацию о пользователе")
+  Rel(user_service, gateway_api, "Возвращает информацию о пользователе")
+
+  note over gateway_api, device_db
+    Этап 2: Сохранение устройства в central registry
+  end note
+  Rel(gateway_api, device_service, "Отправляет запрос на добавление устройства")
+  Rel(device_service, device_db, "Сохраняет информацию об устройстве (id, type, owner)")
+  Rel(device_db, device_service, "Подтверждает сохранение и возвращает deviceId")
+
+  note over device_service, event_bus
+    Этап 3: Публикация события в шину после успешного сохранения
+  end note
+  Rel(device_service, event_bus, "Публикует событие: DeviceRegistered(deviceId, type='heating', address)")
+  Rel(device_service, gateway_api, "Подтверждает добавление устройства")
+  Rel(gateway_api, web_app, "Возвращает успешный статус с deviceId")
+  Rel(web_app, user, "Отображает успешную регистрацию устройства")
+
+  note over event_bus, heating_service
+    Этап 4: Асинхронная обработка события в domain-specific сервисе
+  end note
+  Rel(event_bus, heating_service, "Получает событие: DeviceRegistered")
+  Rel(heating_service, heating_db, "Сохраняет информацию об устройстве отопления (name, address, status='UNVERIFIED')")
+  Rel(heating_db, heating_service, "Подтверждает сохранение")
+
+  note over heating_service, heat
+    Этап 5: Проверка доступности физического устройства
+  end note
+  Rel(heating_service, heat, "GET /status (проверка HTTP доступности)")
+  Rel(heat, heating_service, "Возвращает текущие метрики (temp, status)")
+  Rel(heating_service, heating_db, "Обновляет статус устройства (status='ACTIVE')")
+  Rel(heating_db, heating_service, "Подтверждает обновление статуса")
+
+  note over heating_service, device_service
+    Этап 6: Отправка результата регистрации в central device service
+  end note
+  Rel(heating_service, device_service, "POST /devices/{deviceId}/verification-result (status='SUCCESS')")
+  Rel(device_service, device_db, "Обновляет статус регистрации устройства (verified=true)")
+  Rel(device_db, device_service, "Подтверждает обновление")
+
+Boundary_End()
+
+@enduml

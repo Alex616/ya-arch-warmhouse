@@ -1,0 +1,93 @@
+@startuml
+!include C4_Component.puml
+System_Ext(device, "Датчики устройств", $sprite="robot")
+System_Ext(camera, "Камера", $sprite="robot")
+System(event_bus, "Шина событий")
+
+Boundary(telemetry_consumer, "Сборщик метрик устройств из шины"){
+  Component(telemetry_consumer.consumer, "Подключение к шине")
+  Component(telemetry_consumer.sender, "Отправка метрик в API телеметрии")
+  Rel(event_bus, telemetry_consumer.consumer, "Получение событий из шины данных")
+  Rel(telemetry_consumer.consumer, telemetry_consumer.sender, "Метрики по типам в виде JSON формата")
+}
+
+Boundary(device_managment_service, "Сервис управления устройствами") {
+  Component(device_managment_service.api_device_managment, "API для получения запросов")
+  Component(device_managment_service.register_device, "Модуль регистрации устройства")
+  Component(device_managment_service.event_producer, "Модуль отправки сообщения в шину данных")
+  Component(device_managment_service.db_repository, "Модуль работы с бд")
+  Component(device_managment_service.db_connect, "Подключение к бд")
+  Component(device_managment_service.device_managment_module, "Модуль формирования команд управления")
+  Component(device_managment_service.save_command_result, "Модуль сохранения/отображения результатов команд управления")
+  Rel_D(device_managment_service.api_device_managment, device_managment_service.register_device, "Данные необходимые для регистрации устройства")
+  Rel_D(device_managment_service.register_device, device_managment_service.db_repository, "Данные об устройстве")
+  Rel_D(device_managment_service.db_repository, device_managment_service.db_connect, "Запись данных в бд")
+  Rel_D(device_managment_service.register_device, device_managment_service.event_producer, "Сообщение о появлении нового устройства")
+  Rel_D(device_managment_service.api_device_managment, device_managment_service.device_managment_module, "Данные команды управления")
+  BiRel_D(device_managment_service.device_managment_module, device_managment_service.db_repository, "Получение данных устройства для которой прришла команда")
+  Rel_D(device_managment_service.device_managment_module, device_managment_service.event_producer, "Отправка сообщения с подготовлеными данными устройства")
+  Rel(device_managment_service.event_producer, event_bus, "Отправка сообщений")
+  Rel_D(device_managment_service.api_device_managment, device_managment_service.save_command_result, "Запрос на сохранение или отображения результатов выполнения команды")
+  Rel_D(device_managment_service.save_command_result, device_managment_service.db_repository, "Запрос на сохранение результатов выполнения команды")
+}
+
+Boundary(device_automatization_observer, "Сервис запуска сценариев"){
+  Component(device_automatization_observer.loop_updater, "Переодически запускаемая задча проверки сценариев")
+  Component(device_automatization_observer.db_repository, "Репозиторий работы с бд, получение сценариев")
+  Component(device_automatization_observer.consumer, "Чтение метрик и команд из шины")
+  Component(device_automatization_observer.producer, "Отправка команд")
+  Component(device_automatization_observer.main_logic, "Основная логика работы со сценариями")
+  Rel(event_bus, device_automatization_observer.consumer, "Получение метрик и команд из шины")
+  Rel_D(device_automatization_observer.consumer, device_automatization_observer.main_logic, "Пришли новые метрики/команды пора проверить нет ли что можно исполнить")
+  Rel_D(device_automatization_observer.loop_updater, device_automatization_observer.main_logic, "Пора проверить не появились ли новые сценарии")
+  Rel_D(device_automatization_observer.main_logic, device_automatization_observer.db_repository, "Получаем сценарии")
+  Rel_D(device_automatization_observer.main_logic, device_automatization_observer.producer, "Отправляем команду из сценария")
+  Rel(device_automatization_observer.producer, event_bus, "Отправляем сообщение")
+}
+
+Boundary(heating_light_gate_service, "Сервис содержащий логику управления отоплением/светом/воротами") {
+  Component(heating_light_gate_service.event_consumer, "Потребитель сообщений связаных с системой отопления (светом, воротами)")
+  Component(heating_light_gate_service.register_device, "Добавление/удаления устройства")
+  Component(heating_light_gate_service.db_repository, "Репозиторий работы с бд")
+  Rel(event_bus, heating_light_gate_service.event_consumer, "Получение сообщения из шины")
+  Rel_D(heating_light_gate_service.event_consumer, heating_light_gate_service.register_device, "Сообщение о добавлении/удаления устройства")
+  Rel_D(heating_light_gate_service.register_device, heating_light_gate_service.db_repository, "Добавление/удаление устройства; Получение данных")
+  Component(heating_light_gate_service.command_managment, "Модуль форимрования комнд для устройства")
+  Component(heating_light_gate_service.http_client, "Отправка команды устройству")
+  Component(heating_light_gate_service.device_managment_client, "Клиент для отправки запросов в Сервис управления устройствами")
+  Component(heating_light_gate_service.event_producer, "Модуль отправки сообщений")
+  Rel_D(heating_light_gate_service.event_consumer, heating_light_gate_service.command_managment, "Сообщение управления")
+  Rel_D(heating_light_gate_service.command_managment, heating_light_gate_service.db_repository, "Получение данных устройства по ид из сообщения")
+  Rel_D(heating_light_gate_service.command_managment, heating_light_gate_service.http_client, "Подготовленно сообщение для устройства")
+  Rel_D(heating_light_gate_service.http_client, device, "Отправка команды в датчик")
+  Rel_D(heating_light_gate_service.command_managment, heating_light_gate_service.device_managment_client, "Отправка результата выполнения команды на устройстве в Сервис управления устройствами")
+  Component(heating_light_gate_service.device_metric_loop, "Переодически выполняющаяся операция обновления метрик")
+  BiRel_D(heating_light_gate_service.device_metric_loop, heating_light_gate_service.db_repository, "Получение устройств для которых нужно собирать метрики")
+  BiRel_D(heating_light_gate_service.device_metric_loop, heating_light_gate_service.http_client, "Получение метрик устройства")
+  BiRel_D(heating_light_gate_service.device_metric_loop, heating_light_gate_service.event_producer, "Отправка метрик устройства")
+  Rel(heating_light_gate_service.event_producer, event_bus, "Отправка сообщений")
+}
+
+
+Boundary(camera_service, "Сервис содержащий логику управления камерами") {
+  Component(camera_service.main_logic, "Основная логика работы сервиса по работе с камерами", "Такая же как и с остальными устройствами")
+  Rel(event_bus, camera_service.main_logic, "Получение сообщения из шины")
+  Rel(camera_service.main_logic, event_bus, "Отправка сообщений")
+  Rel(camera_service.main_logic, camera, "Отправка команды в датчик")
+  Component(camera_service.client_for_stream_saver, "Клиент для работы с сервисом сохраняющем потоки")
+  Rel(camera_service.main_logic, camera_service.client_for_stream_saver, "Ид устройства и адресс на поток, в случае удаления потока ид устройства")
+}
+
+Boundary(stream_saver, "Сервис записи потока в s3") {
+  Component(stream_saver.api, "Обработка запросов на добавление/удаление видео потоков привязаных к устройствам")
+  Component(stream_saver.db_repository, "Сохранение/удаление потоков в бд")
+  Component(stream_saver.downloader, "Загрузчик потока")
+  Component(stream_saver.s3_client, "Клиент для закачки потока на s3 хранилище")
+  Component(stream_saver.loop_downloader, "Переодически запускаемый процесс скачивания")
+  Rel_D(stream_saver.api, stream_saver.db_repository, "Сохранение/удаление данных необходимых для скачивания потока")
+  Rel_D(stream_saver.loop_downloader, stream_saver.db_repository, "Получение потоков которые нужно скачать или удалить из скачивания")
+  Rel_D(stream_saver.loop_downloader, stream_saver.downloader, "Скачивание потока")
+  Rel_D(stream_saver.downloader, camera, "Получение потока")
+  Rel_R(stream_saver.downloader, stream_saver.s3_client, "Сохранение потока в s3")
+}
+@enduml

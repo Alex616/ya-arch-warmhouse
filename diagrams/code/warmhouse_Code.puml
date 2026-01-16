@@ -1,0 +1,144 @@
+@startuml
+    ' Модели данных
+    class Device {
+        - id: string
+        - name: string
+        - type: string
+        - status: string
+    }
+
+    class Command {
+        - id: string
+        - deviceId: string
+        - action: string
+        - parameters: Map
+    }
+
+    class Metric {
+        - deviceId: string
+        - timestamp: DateTime
+        - value: float
+        - metricType: string
+    }
+
+    class EventBusReadMessage {
+        - eventType: string
+        - command: Command
+    }
+
+    class EventBusWriteMessage {
+        - eventType: string
+        - payload: Map
+        - metric: Metric
+    }
+
+    ' Потребитель событий из шины
+    class EventConsumer {
+        - eventBusConnection: EventBusConnection
+        + subscribe(eventType: string): void
+        + handleDeviceRegistration(message: Message): void
+        + handleDeviceRemoval(message: Message): void
+        + handleCommandMessage(message: Message): void
+    }
+
+    ' Регистрация устройств
+    class RegisterDevice {
+        - dbRepository: DbRepository
+        + registerDevice(deviceData: Device): Device
+        + removeDevice(deviceId: string): void
+        + getDeviceInfo(deviceId: string): Device
+    }
+
+    ' Репозиторий базы данных
+    class DbRepository {
+        - dbConnection: DatabaseConnection
+        + save(device: Device): void
+        + delete(deviceId: string): void
+        + findById(deviceId: string): Device
+        + findAll(): List<Device>
+        + saveCommandResult(command: Command, result: string): void
+        + getDevicesByType(type: string): List<Device>
+    }
+
+    ' Управление командами
+    class CommandManagement {
+        - dbRepository: DbRepository
+        - httpClient: HttpClient
+        - deviceManagmentClient: DeviceManagementClient
+        + processCommand(command: Command): void
+        + prepareCommandData(command: Command): CommandPayload
+        + executeCommand(device: Device, command: CommandPayload): void
+        + sendCommandResult(deviceId: string, result: string): void
+    }
+
+    ' HTTP клиент для отправки команд устройствам
+    class HttpClient {
+        - timeout: int
+        + sendCommand(deviceAddress: string, command: CommandPayload): Response
+        + getDeviceMetrics(deviceAddress: string): Metric
+        + checkDeviceStatus(deviceAddress: string): string
+    }
+
+    ' Клиент для взаимодействия с сервисом управления устройствами
+    class DeviceManagementClient {
+        - apiEndpoint: string
+        + sendCommandResult(deviceId: string, result: string): void
+        + registerCommandExecution(deviceId: string, command: Command): void
+    }
+
+    ' Производитель событий в шину
+    class EventProducer {
+        - eventBusConnection: EventBusConnection
+        + publishMessage(message: Message): void
+        + publishMetric(metric: Metric): void
+        + publishCommandResult(deviceId: string, result: string): void
+    }
+
+    ' Периодический сбор метрик
+    class DeviceMetricLoop {
+        - dbRepository: DbRepository
+        - httpClient: HttpClient
+        - eventProducer: EventProducer
+        - schedulerService: SchedulerService
+        + startMetricCollection(): void
+        + collectMetricsForDevice(device: Device): void
+        + processMetric(metric: Metric): void
+    }
+
+    ' Главный сервис
+    class HeatingLightGateService {
+        - eventConsumer: EventConsumer
+        - registerDevice: RegisterDevice
+        - commandManagement: CommandManagement
+        - eventProducer: EventProducer
+        - deviceMetricLoop: DeviceMetricLoop
+        + start(): void
+        + stop(): void
+    }
+
+    ' Отношения
+    HeatingLightGateService *-- EventConsumer
+    HeatingLightGateService *-- RegisterDevice
+    HeatingLightGateService *-- CommandManagement
+    HeatingLightGateService *-- EventProducer
+    HeatingLightGateService *-- DeviceMetricLoop
+    EventBusWriteMessage *-- Metric
+    EventBusReadMessage *-- Command
+
+    EventBusReadMessage <-.- EventConsumer: получает событие
+    EventConsumer --> RegisterDevice: передает данные регистрации
+    EventConsumer --> CommandManagement: передает команды управления
+
+    RegisterDevice --> DbRepository: работает с БД
+    CommandManagement --> DbRepository: получает данные устройства
+    CommandManagement --> HttpClient: отправляет команду
+    CommandManagement --> DeviceManagementClient: отправляет результат
+
+    DeviceMetricLoop --> DbRepository: получает список устройств
+    DeviceMetricLoop --> HttpClient: получает метрики
+    DeviceMetricLoop --> EventProducer: публикует метрики
+
+    EventProducer -.-> EventBusWriteMessage: данные в шину событий
+
+    HttpClient -.-> Device: отправляет команды/получает метрики
+@enduml

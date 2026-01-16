@@ -1,0 +1,232 @@
+asyncapi: 2.6.0
+info:
+  title: Device Management EventBus API
+  version: 1.0.0
+  description: |
+    Асинхронное API для управления устройствами через шину событий (EventBus).
+
+    Сервис Device Management публикует и подписывается на события:
+    - Команды управления устройствами
+    - События регистрации/удаления устройств
+
+servers:
+  kafka:
+    url: kafka://kafka:9092
+    protocol: kafka
+
+channels:
+  device.commands:
+    description: Канал для отправки команд управления устройствами
+    publish:
+      summary: Отправка команды управления устройством
+      description: |
+        Device Management Service публикует команды управления в этот канал.
+        Сервисы управления конкретными типами устройств (heating, lighting, gate, camera) подписаны на этот канал.
+      operationId: publishDeviceCommand
+      message:
+        $ref: "#/components/messages/DeviceCommandMessage"
+
+  device.registered:
+    description: Канал для событий регистрации новых устройств
+    publish:
+      summary: Уведомление о регистрации нового устройства
+      description: |
+        При регистрации нового устройства публикуется событие,
+        чтобы соответствующий сервис управления мог добавить устройство в свою БД.
+      operationId: publishDeviceRegistered
+      message:
+        $ref: "#/components/messages/DeviceRegisteredMessage"
+
+  device.deleted:
+    description: Канал для событий удаления устройств
+    publish:
+      summary: Уведомление об удалении устройства
+      description: |
+        При удалении устройства публикуется событие,
+        чтобы соответствующий сервис управления мог удалить устройство из своей БД.
+      operationId: publishDeviceDeleted
+      message:
+        $ref: "#/components/messages/DeviceDeletedMessage"
+
+components:
+  messages:
+    DeviceCommandMessage:
+      name: DeviceCommand
+      title: Команда управления устройством
+      summary: Сообщение с командой для выполнения на устройстве
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/DeviceCommandPayload"
+      examples:
+        - name: SetTemperatureCommand
+          summary: Установка целевой температуры на нагревателе
+          payload:
+            eventType: device.command
+            timestamp: "2024-01-10T10:00:00Z"
+            command:
+              id: "550e8400-e29b-41d4-a716-446655440000"
+              deviceId: "123e4567-e89b-12d3-a456-426614174000"
+              commandKey: "set_temperature"
+              parameters:
+                temperature: 22.5
+                mode: "heat"
+              priority: "normal"
+
+    DeviceRegisteredMessage:
+      name: DeviceRegistered
+      title: Устройство зарегистрировано
+      summary: Уведомление о регистрации нового устройства в системе
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/DeviceRegisteredPayload"
+      examples:
+        - name: TemperatureSensorRegistered
+          summary: Регистрация датчика температуры
+          payload:
+            eventType: device.registered
+            timestamp: "2024-01-10T10:00:00Z"
+            device:
+              id: "123e4567-e89b-12d3-a456-426614174000"
+              name: "Датчик температуры в гостиной"
+              modelId: 1
+              typeId: 5
+              address: "192.168.1.10"
+              userId: "987fcdeb-51a2-43d1-b234-567890abcdef"
+
+    DeviceDeletedMessage:
+      name: DeviceDeleted
+      title: Устройство удалено
+      summary: Уведомление об удалении устройства из системы
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/DeviceDeletedPayload"
+      examples:
+        - name: DeviceRemoved
+          summary: Удаление устройства
+          payload:
+            eventType: device.deleted
+            timestamp: "2024-01-10T10:00:00Z"
+            deviceId: "123e4567-e89b-12d3-a456-426614174000"
+            typeId: 1
+
+  schemas:
+    DeviceCommandPayload:
+      type: object
+      description: Полезная нагрузка команды управления устройством
+      required:
+        - eventType
+        - timestamp
+        - command
+      properties:
+        eventType:
+          type: string
+          const: device.command
+          description: Тип события
+        timestamp:
+          type: string
+          format: date-time
+          description: Время создания события
+        command:
+          type: object
+          required:
+            - id
+            - deviceId
+            - commandKey
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: ID записи команды (CommandRecord)
+            deviceId:
+              type: string
+              format: uuid
+              description: ID целевого устройства
+            commandKey:
+              type: string
+              description: Ключ команды для API устройства
+              example: "set_temperature"
+            parameters:
+              type: object
+              description: Параметры команды (ключ-значение)
+              additionalProperties: true
+            priority:
+              type: string
+              enum:
+                - low
+                - normal
+                - high
+                - critical
+              default: normal
+              description: Приоритет выполнения команды
+
+    DeviceRegisteredPayload:
+      type: object
+      description: Полезная нагрузка события регистрации устройства
+      required:
+        - eventType
+        - timestamp
+        - device
+      properties:
+        eventType:
+          type: string
+          const: device.registered
+        timestamp:
+          type: string
+          format: date-time
+        device:
+          type: object
+          required:
+            - id
+            - name
+            - modelId
+            - typeId
+            - address
+            - userId
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: ID устройства
+            name:
+              type: string
+              description: Название устройства
+            modelId:
+              type: integer
+              description: ID модели устройства
+            typeId:
+              type: integer
+              description: ID типа устройства (1=heating, 2=lighting, 3=gate, 4=camera, 5=temperature_sensor)
+            address:
+              type: string
+              description: Сетевой адрес устройства
+            userId:
+              type: string
+              format: uuid
+              description: ID владельца устройства
+            specifications:
+              type: object
+              description: Дополнительные технические характеристики
+              additionalProperties: true
+
+    DeviceDeletedPayload:
+      type: object
+      description: Полезная нагрузка события удаления устройства
+      required:
+        - eventType
+        - timestamp
+        - deviceId
+        - typeId
+      properties:
+        eventType:
+          type: string
+          const: device.deleted
+        timestamp:
+          type: string
+          format: date-time
+        deviceId:
+          type: string
+          format: uuid
+          description: ID удаленного устройства
+        typeId:
+          type: integer
+          description: ID типа устройства

@@ -1,0 +1,70 @@
+@startuml
+!include C4_Sequence.puml
+Boundary(b, "Автоматизация системы отопления", "")
+  System_Ext(heat, "Система отопления", $sprite="robot")
+  Container(event_bus, "Event bus", "Kafka")
+
+  Container_Boundary(device_managment, "Device managment Domain")
+    Container(device_service, "Device Managment Service", "Go")
+    ContainerDb(device_db, "Database API", "PostgreSQL")
+    Container(device_automatization_service, "Сервис автоматизации команд", "Go")
+    Container(device_automatization_observer, "Сервис отслеживающий метрики и команды устройств", "Go")
+    ContainerDb(device_automatization_db, "Бд для сервиса автоматизации", "PostgreSQL")
+  Boundary_End()
+
+  Container_Boundary(telemetry_domain, "Telemetry Domain")
+    Container(heating_service, "Heating service", "Go")
+    ContainerDb(heating_db, "Heating database", "PostgreSQL")
+  Boundary_End()
+
+  note over heating_service
+    1. Периодически собирает метрики от устройства
+  end note
+  Rel(heating_service, heat, "GET метрики (температура, статус)")
+  Rel(heat, heating_service, "Возвращает текущие метрики")
+  Rel(heating_service, heating_db, "Обновляет статус устройства")
+  Rel(heating_db, heating_service, "Подтверждает обновление")
+
+  note over heating_service
+    2. Публикует метрики в шину событий
+  end note
+  Rel(heating_service, event_bus, "Публикует метрику (deviceId, temperature, timestamp)")
+
+  note over device_automatization_observer
+    3. Получает метрики из шины
+  end note
+  Rel(event_bus, device_automatization_observer, "Поток метрик")
+
+  note over device_automatization_observer
+    4. Получает сценарии из БД
+  end note
+  Rel(device_automatization_observer, device_automatization_db, "SELECT сценарии WHERE deviceId = ?")
+  Rel(device_automatization_db, device_automatization_observer, "Сценарии с условиями (например: temp < 18 → включить отопление)")
+
+  note over device_automatization_observer
+    5. Публикует команду управления в шину
+  end note
+  Rel(device_automatization_observer, event_bus, "Публикует команду (deviceId, action: 'TURN_ON', timestamp)")
+
+  note over heating_service
+    6. Получает команду управления из шины
+  end note
+  Rel(event_bus, heating_service, "Команда управления")
+
+  note over heating_service
+    7. Выполняет команду на устройстве и сохраняет результат
+  end note
+  Rel(heating_service, heat, "POST команда (action: 'TURN_ON')")
+  Rel(heat, heating_service, "Подтверждает выполнение")
+  Rel(heating_service, heating_db, "UPDATE статус устройства (status: 'ON')")
+  Rel(heating_db, heating_service, "Подтверждает обновление")
+
+  note over heating_service
+    8. Отправляет результат выполнения команды в сервис управления
+  end note
+  Rel(heating_service, device_service, "POST результат команды (commandId, status: 'SUCCESS', result: {...})")
+  Rel(device_service, device_db, "Сохраняет результат выполнения команды")
+  Rel(device_db, device_service, "Подтверждает сохранение")
+
+Boundary_End()
+@enduml

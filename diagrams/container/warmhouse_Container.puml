@@ -1,0 +1,100 @@
+@startuml
+!include C4_Container.puml
+Person(user, "Пользователь", "Пользователь системы")
+
+System_Boundary(c0, "Умный дом") {
+    System_Ext(heat, "Датчик темперетуры", $sprite="robot")
+    System_Ext(camera, "Видео камера", $sprite="robot")
+    System_Ext(gate, "Ворота", $sprite="robot")
+    System_Ext(light, "Свет", $sprite="robot")
+}
+
+
+Boundary(c1, "Теплый дом") {
+    Container(gateway_api, "Gateway")
+    Container(web_app, "Web Application", "React", "Интерфейс для управления")
+    ContainerQueue(event_bus, "Event bus", "Kafka", "Очередь для сообщений от устройств (метрики, события управления)")
+
+    Rel(user, web_app, "HTTPS", "sync")
+    Rel_D(web_app, gateway_api, "HTTPS", "sync")
+
+
+System_Boundary(c2, "Device managment Domain") {
+        Container(device_service, "Device Managment Service", "Go", "Сервис добавления/удаления устройств и управления ими")
+        ContainerDb(device_db, "Database API", "PostgreSQL", "Бд для хранения информации об устройствах")
+        Container(device_automatization_service, "Сервис автоматизации команд", "Go", "Позволяет пользователю настраивать команды в зависимости от данных телеметрии")
+        Container(device_automatization_observer, "Сервис отслеживающий метрики. и команды устройств", "Go", "Отслеживает в каком состоянии находиться то или иное устройство и запускает сценарий")
+        ContainerDb(device_automatization_db, "Бд для сервиса автоматизации", "PostgreSQL")
+        Rel(gateway_api, device_service, "REST", "sync")
+        Rel(device_service, event_bus, "Event producer", "async")
+        Rel(device_service, device_db, "Хранени данных об устройствах")
+
+        Rel(gateway_api, device_automatization_service, "REST", "sync")
+        Rel(device_automatization_service, device_automatization_db, "Хранени комманд и их связей")
+        Rel(device_automatization_observer, event_bus, "Event producer/consumer", "async")
+        Rel(device_automatization_observer, device_automatization_db, "Получение сценариев")
+    }
+
+    System_Boundary(c3, "User managment Domain") {
+        Container(auth_app, "AUTH Application", "Go, KeyCloack", "Сервис служащий для авторизации и решистрации, хранит токены пользователя")
+        Container(user_service, "User Managment Service", "Go", "Сервис для работы с пользователем и его данными")
+        Rel(gateway_api, user_service, "REST", "sync")
+        Rel_Neighbor(user_service, auth_app, "HTTPS, JWT", "sync")
+        Rel(gateway_api, auth_app, "HTTPS,JWT", "sync")
+
+    }
+    System_Boundary(c4, "Telemetry Domain") {
+        Container(telematry_consumer, "Сборщик метрик из шины", "GO", "Получает сообщения с метриками из шины, отправляет их в API телеметрии")
+        Container(telemetry_api, "Telemetry API", "Go", "REST сервис для получения метрик и записи их в бд")
+        ContainerDb(database_telemetry, "Database Telemetry", "MongoDB", "Бд для хранения телеметрии")
+
+        Container(heating_service, "Heating service", "Go", "Сервис управления отоплением")
+        ContainerDb(heating_db, "Heating database", "PostgreSQL", "Хранит устройства отопления")
+        Container(lightning_service, "Lightning service", "Go", "Сервис управления светом")
+        ContainerDb(lightning_db, "Lightning database", "PostgreSQL", "Хранит устройства управления светом")
+        Container(gate_service, "Gate service", "Go", "Сервис управления воротами")
+        ContainerDb(gate_db, "Gate database", "PostgreSQL", "Хранит устройства управления воротами")
+        Container(camera_service, "Camera service", "Go", "Сервис управления камерой")
+        ContainerDb(camera_db, "Camera database", "PostgreSQL", "Хранит устройства виде камеры")
+
+        Rel(gateway_api, telemetry_api, "REST", "sync")
+
+        BiRel_U(heating_service, heat, "HTTPS", "GET")
+        BiRel_U(heating_service, heating_db, "Чтение/запись устройств отопления")
+        BiRel_U(lightning_service, light, "HTTPS", "GET")
+        BiRel_U(lightning_service, lightning_db, "Чтение/запись устройств управления светом")
+        BiRel_U(gate_service, gate, "HTTPS", "GET")
+        BiRel_U(gate_service, gate_db, "Чтение/запись устройств управления воротами")
+        BiRel_U(camera_service, camera, "HTTPS", "GET")
+        BiRel_U(camera_service, camera_db, "Чтение/запись устройств управления камерами")
+
+
+
+        BiRel_D(heating_service, event_bus, "Event consumer/producer", "async")
+        BiRel_D(lightning_service, event_bus, "Event consumer/producer", "async")
+        BiRel_D(gate_service, event_bus, "Event consumer/producer", "async")
+        BiRel_D(camera_service, event_bus, "Event consumer/producer", "async")
+
+        Rel(heating_service, device_service, "HTTPS", "sync")
+        Rel(lightning_service, device_service, "HTTPS", "sync")
+        Rel(gate_service, device_service, "HTTPS", "sync")
+        Rel(camera_service, device_service, "HTTPS", "sync")
+
+        Rel(telematry_consumer, event_bus, "Event consumer", "async")
+        Rel_Neighbor(telematry_consumer, telemetry_api, "REST", "sync")
+        BiRel_U(telemetry_api, database_telemetry, "Получение/запись данных устройства")
+    }
+
+    System_Boundary(c5, "Video Stream Domain") {
+      Container(s3, "Storage", "MINIO", "Хранение видео-файлов и просто файлов от датчиков")
+      Container(file_gateway, "HTTP-сервер", "NGINX", "Отдает видео файлы")
+      Container(stream_saver, "Сервис сохранения потока", "Go", "Получает поток и записывает его в s3")
+      ContainerDb(stream_saver_db, "БД для хранения данных о потоках", "PostgreSQL", "Хранит данные о потоках и связаных с ними устройствах")
+      Rel(stream_saver, stream_saver_db, "Получает данные о потоках")
+      Rel(stream_saver, camera, "HTTPS")
+      Rel_Neighbor(stream_saver, s3, "s3")
+      Rel_D(file_gateway, s3, "HTTPS", "S3, sync")
+      Rel(user, file_gateway, "HTTPS", "sync")
+    }
+}
+@enduml

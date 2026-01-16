@@ -1,0 +1,97 @@
+@startuml
+!include C4_Sequence.puml
+Boundary(b2, "Управление отоплением (включение/выключение)", "")
+  Person(user, "Пользователь")
+  System_Ext(heat, "Система отопления", $sprite="robot")
+  Container(web_app, "Web Application", "React")
+  Container(gateway_api, "Gateway", "API Gateway")
+  Container(event_bus, "Event bus", "Kafka")
+
+  Container_Boundary(user_managment, "User Managment Domain")
+    Container(auth_app, "AUTH Application", "Go, KeyCloack")
+    Container(user_service, "User Managment Service", "Go")
+  Boundary_End()
+
+  Container_Boundary(device_managment, "Device managment Domain")
+    Container(device_service, "Device Managment Service", "Go")
+    ContainerDb(device_db, "Database API", "PostgreSQL")
+  Boundary_End()
+
+  Container_Boundary(telemetry_domain, "Telemetry Domain")
+    Container(heating_service, "Heating service", "Go")
+    ContainerDb(heating_db, "Heating database", "PostgreSQL")
+  Boundary_End()
+
+  note over user, gateway_api
+    Этап 1: Аутентификация и авторизация пользователя
+  end note
+  Rel(user, web_app, "Отправляет команду включения отопления")
+  Rel(web_app, gateway_api, "Отправляет GET /devices/{deviceId}/control?action=TURN_ON")
+  Rel(gateway_api, auth_app, "Проверяет токен пользователя")
+  Rel(auth_app, gateway_api, "Возвращает статус токена")
+  Rel(gateway_api, user_service, "Запрашивает информацию о пользователе")
+  Rel(user_service, gateway_api, "Возвращает информацию о пользователе и его права доступа")
+
+  note over gateway_api, device_db
+    Этап 2: Получение информации об устройстве и формирование команды
+  end note
+  Rel(gateway_api, device_service, "Отправляет запрос на выполнение команды управления")
+  Rel(device_service, device_db, "Получает информацию об устройстве отопления (id, type, owner, status)")
+  Rel(device_db, device_service, "Возвращает информацию об устройстве")
+
+  note over device_service, event_bus
+    Этап 3: Сохранение команды и публикация в шину (асинхронно)
+  end note
+  Rel(device_service, device_db, "Сохраняет команду управления (commandId, status='PENDING')")
+  Rel(device_db, device_service, "Подтверждает сохранение commandId")
+  Rel(device_service, event_bus, "Публикует команду: Command(commandId, deviceId, action='TURN_ON')")
+  Rel(device_service, gateway_api, "Возвращает статус 200 с commandId (команда принята)")
+  Rel(gateway_api, web_app, "Успешно: commandId отправлена, ожидайте результата")
+  Rel(web_app, user, "Отображает: команда отправлена на выполнение")
+
+  note over web_app, device_db
+    Этап 3.1: Периодический опрос статуса выполнения команды (polling каждые 1-2 сек)
+  end note
+  Rel(web_app, gateway_api, "GET /commands/{commandId}/status")
+  Rel(gateway_api, device_service, "Запрашивает статус команды")
+  Rel(device_service, device_db, "SELECT * FROM commands WHERE commandId = ?")
+  Rel(device_db, device_service, "Возвращает статус (status='PENDING')")
+  Rel(device_service, gateway_api, "Возвращает статус")
+  Rel(gateway_api, web_app, "200 OK: {status='PENDING', progress=0%}")
+  Rel(web_app, user, "Отображает: команда в очереди выполнения...")
+
+  note over event_bus, heating_service
+    Этап 4: Асинхронная обработка команды в heating_service
+  end note
+  Rel(event_bus, heating_service, "Получает команду: Command(commandId, deviceId, action='TURN_ON')")
+  Rel(heating_service, heating_db, "Получает конфигурацию устройства (address, credentials)")
+  Rel(heating_db, heating_service, "Возвращает данные подключения")
+
+  note over heating_service, heat
+    Этап 5: Выполнение команды на физическом устройстве
+  end note
+  Rel(heating_service, heat, "POST /control?action=TURN_ON")
+  Rel(heat, heating_service, "Возвращает результат: {status='SUCCESS', newTemp=22.5}")
+  Rel(heating_service, heating_db, "Обновляет статус устройства (status='ON', temp=22.5)")
+  Rel(heating_db, heating_service, "Подтверждает обновление")
+
+  note over heating_service, device_service
+    Этап 6: Отправка результата в central device service
+  end note
+  Rel(heating_service, device_service, "POST /commands/{commandId}/result (status='SUCCESS', result={...})")
+  Rel(device_service, device_db, "Обновляет статус команды (status='COMPLETED')")
+  Rel(device_db, device_service, "Подтверждает обновление")
+
+  note over web_app, device_db
+    Этап 3.2: Следующий периодический опрос (статус изменён на COMPLETED)
+  end note
+  Rel(web_app, gateway_api, "GET /commands/{commandId}/status (повторный запрос)")
+  Rel(gateway_api, device_service, "Запрашивает статус команды")
+  Rel(device_service, device_db, "SELECT * FROM commands WHERE commandId = ?")
+  Rel(device_db, device_service, "Возвращает статус (status='COMPLETED', result={status='SUCCESS', newTemp=22.5})")
+  Rel(device_service, gateway_api, "Возвращает результат")
+  Rel(gateway_api, web_app, "200 OK: {status='COMPLETED', result={...}}")
+  Rel(web_app, user, "Отображает: команда успешно выполнена! Температура: 22.5°C")
+
+Boundary_End()
+@enduml

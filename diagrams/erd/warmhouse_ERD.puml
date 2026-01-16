@@ -1,0 +1,173 @@
+@startuml
+
+
+package "EventBus Messages" {
+    entity EventBusReadMessage {
+        * eventType: string
+        * command: Command
+    }
+
+    entity EventBusWriteMessage {
+        * eventType: string
+        * payload: Map
+        * metric: Metric
+    }
+}
+
+package "User Management" {
+  entity User {
+      * id: UUID
+      * username: string
+      * email: string
+      * passwordHash: string
+  }
+
+  entity UserToken {
+      * userId: UUID
+      * token: string
+      * expiry: DateTime
+  }
+}
+
+package "Device Management" {
+    entity DeviceType {
+        * id: int
+        * name: string
+    }
+
+    entity DeviceModel {
+        * id: int
+        * name: string
+        * manufacturer: string
+        * specifications: Object
+        * type: DeviceType
+    }
+
+    entity Command {
+        * id: UUID
+        * name: string
+        * key: string
+        * deviceModelId: int
+    }
+
+    entity CommandParameter {
+        * id: UUID
+        * commandId: UUID
+        * name: string
+        * type: string
+        * defaultValue: string
+        * isRequired: boolean
+    }
+
+    entity DeviceStatus {
+        * id: int
+        * status: string
+    }
+
+    entity Device {
+        * id: UUID
+        * name: string
+        * modelId: int
+        * statusId: int
+        * address: string
+        * userId: UUID
+    }
+
+    entity CommandStatus {
+        * id: int
+        * status: string
+    }
+
+    entity CommandRecord {
+        * id: UUID
+        * deviceId: UUID
+        * command: Command
+        * status: CommandStatus
+        * timestamp: DateTime
+        * result: Object
+    }
+
+    package "Automation" {
+        entity Scenario {
+            * id: UUID
+            * userId: UUID
+            * name: string
+            * description: string
+            * isActive: boolean
+            * createdAt: DateTime
+            * updatedAt: DateTime
+        }
+
+        entity ScenarioCondition {
+            * id: UUID
+            * scenarioId: UUID
+            * deviceId: UUID
+            * metricTypeId: int
+            * operator: string
+            * value: string
+        }
+
+        entity ScenarioAction {
+            * id: UUID
+            * scenarioId: UUID
+            * commandId: UUID
+            * parameters: Object
+            * delay: int
+            * order: int
+        }
+    }
+}
+
+package "Telemetry Management" {
+
+    entity MetricType {
+        * id: int
+        * name: string
+        * unit: string
+        * dataType: string
+    }
+
+    entity Metric {
+        * id: UUID
+        * deviceId: UUID
+        * metricTypeId: int
+        * timestamp: DateTime
+        * value: string
+        * data: Object
+    }
+}
+
+
+
+' Связи в пакете User Management
+User ||--o{ UserToken : "имеет токены"
+User ||--o{ Device : "владеет"
+User ||--o{ Scenario : "создает"
+
+' Связи в пакете Device Management
+DeviceType ||--o{ DeviceModel : "определяет тип"
+DeviceModel ||--o{ Device : "модель"
+DeviceModel ||--o{ Command : "поддерживает"
+DeviceStatus ||--o{ Device : "статус"
+Device ||--o{ CommandRecord : "выполняет"
+Command ||--o{ CommandRecord : "запись"
+Command ||--o{ CommandParameter : "параметры"
+CommandStatus ||--o{ CommandRecord : "результат"
+
+' Связи в пакете Telemetry
+MetricType ||--o{ Metric : "тип метрики"
+Device ||--o{ Metric : "генерирует"
+
+' Связи в пакете Automation
+Scenario ||--o{ ScenarioCondition : "условия"
+Scenario ||--o{ ScenarioAction : "действия"
+ScenarioCondition }o--|| Device : "отслеживает"
+ScenarioCondition }o--|| MetricType : "проверяет"
+ScenarioAction }o--|| Command : "выполняет"
+
+
+' Связи EventBus с другими сущностями
+EventBusReadMessage }o--|| Command : "содержит"
+EventBusWriteMessage }o--|| Metric : "содержит"
+
+@enduml

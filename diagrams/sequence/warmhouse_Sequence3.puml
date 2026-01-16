@@ -1,0 +1,71 @@
+@startuml
+!include C4_Sequence.puml
+Boundary(b, "Получение метрик устройства отопления", "")
+  Person(user, "Пользователь")
+  System_Ext(heat, "Система отопления", $sprite="robot")
+  Container(web_app, "Web Application", "React")
+  Container(gateway_api, "Gateway", "API Gateway")
+  Container(event_bus, "Event bus", "Kafka")
+
+  Container_Boundary(user_managment, "User Managment Domain")
+    Container(auth_app, "AUTH Application", "Go, KeyCloack")
+  Boundary_End()
+
+  Container_Boundary(device_managment, "Device managment Domain")
+    Container(device_service, "Device Managment Service", "Go")
+    ContainerDb(device_db, "Database API", "PostgreSQL")
+  Boundary_End()
+
+  Container_Boundary(telemetry_domain, "Telemetry Domain")
+    Container(heating_service, "Heating service", "Go")
+    ContainerDb(heating_db, "Heating database", "PostgreSQL")
+    Container(telemetry_api, "Telemetry API", "Go")
+    ContainerDb(database_telemetry, "Database Telemetry", "MongoDB")
+    Container(telemetry_consumer, "Сборщик метрик из шины", "GO")
+  Boundary_End()
+
+  note over heating_service, database_telemetry
+    Фоновый процесс: Периодический сбор метрик (происходит постоянно)
+  end note
+  Rel(heating_service, heat, "GET /metrics (периодически запрашивает текущие метрики)")
+  Rel(heat, heating_service, "Возвращает метрики: {temp=21.5, humidity=45%, status='ON', timestamp}")
+  Rel(heating_service, heating_db, "Обновляет локальный статус устройства")
+  Rel(heating_db, heating_service, "Подтверждает обновление")
+  Rel(heating_service, event_bus, "Публикует событие: MetricCollected(deviceId, temp, timestamp)")
+  Rel(event_bus, telemetry_consumer, "Получает метрику из шины")
+  Rel(telemetry_consumer, telemetry_api, "POST /metrics (отправляет метрику в хранилище)")
+  Rel(telemetry_api, database_telemetry, "Сохраняет метрику в MongoDB (временной ряд)")
+  Rel(database_telemetry, telemetry_api, "Подтверждает сохранение")
+
+  note over user, gateway_api
+    Этап 1: Аутентификация пользователя
+  end note
+  Rel(user, web_app, "Запрашивает страницу с историей метрик отопления")
+  Rel(web_app, gateway_api, "Отправляет GET /devices/heating/metrics?from={timestamp}&to={timestamp}")
+  Rel(gateway_api, auth_app, "Проверяет токен пользователя")
+  Rel(auth_app, gateway_api, "Возвращает статус токена (VALID)")
+
+  note over gateway_api, device_db
+    Этап 2: Получение информации об устройстве пользователя
+  end note
+  Rel(gateway_api, device_service, "Запрашивает устройство отопления пользователя (GET /users/{userId}/devices?type=heating)")
+  Rel(device_service, device_db, "SELECT devices WHERE userId = ? AND type = 'heating'")
+  Rel(device_db, device_service, "Возвращает информацию об устройстве (deviceId, address, name)")
+  Rel(device_service, gateway_api, "Возвращает список устройств пользователя")
+
+  note over gateway_api, database_telemetry
+    Этап 3: Запрос исторических метрик из хранилища телеметрии
+  end note
+  Rel(gateway_api, telemetry_api, "Отправляет GET /metrics/devices/{deviceId}?from={time}&to={time}&limit=1000")
+  Rel(telemetry_api, database_telemetry, "Запрашивает метрики за период (MongoDB query)")
+  Rel(database_telemetry, telemetry_api, "Возвращает список метрик (массив с temp, humidity, timestamp)")
+  Rel(telemetry_api, gateway_api, "Возвращает метрики в формате JSON")
+
+  note over gateway_api, user
+    Этап 4: Отправка данных пользователю и отображение
+  end note
+  Rel(gateway_api, web_app, "200 OK: {deviceId, metrics=[{temp, humidity, timestamp}, ...]}")
+  Rel(web_app, user, "Отображает график метрик отопления (температура, влажность во времени)")
+
+Boundary_End()
+@enduml

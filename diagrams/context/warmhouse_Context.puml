@@ -1,0 +1,21 @@
+@startuml
+!include C4_Context.puml
+Person_Ext(staff, "Работник компании", "Работник компании")
+Boundary(b, "Дом пользователя") {
+  Person(user, "Пользователь", "Пользователь системы")
+  System(temp, "Датчик темперетуры", $sprite="robot")
+}
+
+System_Boundary(s1, "Теплый дом") {
+    System(warmhouse_system, "Система управления", "Система для мониторинга и управления")
+    SystemDb(database, "База данных", "Хранит данные о температуре")
+}
+
+Rel(staff, warmhouse_system, "Регестрируется новый датчик", "HTTP")
+Rel(user, warmhouse_system, "Просматривает температуру", "HTTP")
+Rel(user, warmhouse_system, "Отправляет команду включения/отключения отопление", "HTTP")
+Rel(temp, warmhouse_system, "Отправляет информацию о температуре", "HTTP")
+Rel(warmhouse_system, temp, "Включает/отключает отопление", "HTTP")
+Rel(warmhouse_system, database, "Читает и записывает данные о температуре" )
+
+@enduml
